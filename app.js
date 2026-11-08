@@ -53,6 +53,7 @@ let complexes = [];
 let selectedComplexCode = null;
 let selectedRegionKey = null;
 let map;
+let mapMode = "pending";
 let regionOverlays = [];
 let numberFormatter = new Intl.NumberFormat("ko-KR");
 
@@ -195,7 +196,7 @@ function selectComplex(code) {
   renderList();
   updateOverlayStyles();
   const point = REGION_COORDINATES[selectedRegionKey];
-  if (point && map) {
+  if (point && mapMode === "kakao" && map) {
     map.panTo(new kakao.maps.LatLng(point[0], point[1]));
   }
 }
@@ -217,24 +218,28 @@ function updateOverlayStyles() {
   }
 }
 
-function renderMap() {
+function collectMapRegions() {
+  const regions = new Map();
+  for (const complex of complexes) {
+    const key = regionKey(complex);
+    if (!key || !REGION_COORDINATES[key]) continue;
+    if (!regions.has(key)) {
+      regions.set(key, { key, province: complex.province, district: complex.district, complexes: [] });
+    }
+    regions.get(key).complexes.push(complex);
+  }
+  return regions;
+}
+
+function renderKakaoMap() {
+  mapMode = "kakao";
   const mapElement = document.querySelector("#map");
   map = new kakao.maps.Map(mapElement, {
     center: new kakao.maps.LatLng(37.32, 127.06),
     level: 8,
   });
 
-  const regions = new Map();
-  for (const complex of complexes) {
-    const key = regionKey(complex);
-    const point = REGION_COORDINATES[key];
-    if (!point) continue;
-    if (!regions.has(key)) {
-      regions.set(key, { key, province: complex.province, district: complex.district, complexes: [] });
-    }
-    regions.get(key).complexes.push(complex);
-  }
-
+  const regions = collectMapRegions();
   const bounds = new kakao.maps.LatLngBounds();
   for (const region of regions.values()) {
     const [lat, lng] = REGION_COORDINATES[region.key];
@@ -267,10 +272,112 @@ function renderMap() {
   elements.mapMessage.classList.add("hidden");
 }
 
-function showMapError(message) {
-  elements.mapMessage.classList.remove("hidden");
-  elements.mapMessage.classList.add("error");
-  elements.mapMessage.textContent = message;
+function renderOfflineMap() {
+  map = null;
+  mapMode = "offline";
+  const mapElement = document.querySelector("#map");
+  const regions = [...collectMapRegions().values()];
+  const longitudes = regions.map((region) => REGION_COORDINATES[region.key][1]);
+  const latitudes = regions.map((region) => REGION_COORDINATES[region.key][0]);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const plot = { left: 76, top: 52, width: 650, height: 390 };
+  const spanLongitude = maxLongitude - minLongitude || 1;
+  const spanLatitude = maxLatitude - minLatitude || 1;
+  const points = regions.map((region, index) => {
+    const [latitude, longitude] = REGION_COORDINATES[region.key];
+    return {
+      region,
+      index,
+      x: plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width,
+      y: plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height,
+    };
+  });
+
+  for (let iteration = 0; iteration < 100; iteration += 1) {
+    for (let i = 0; i < points.length; i += 1) {
+      for (let j = i + 1; j < points.length; j += 1) {
+        const first = points[i];
+        const second = points[j];
+        const dx = second.x - first.x;
+        const dy = second.y - first.y;
+        const distance = Math.hypot(dx, dy) || 0.01;
+        const minimumDistance = 35;
+        if (distance >= minimumDistance) continue;
+        const movement = (minimumDistance - distance) * 0.025;
+        const offsetX = (dx / distance) * movement;
+        const offsetY = (dy / distance) * movement;
+        first.x -= offsetX;
+        first.y -= offsetY;
+        second.x += offsetX;
+        second.y += offsetY;
+      }
+    }
+    for (const point of points) {
+      point.x = Math.min(752, Math.max(50, point.x));
+      point.y = Math.min(445, Math.max(44, point.y));
+    }
+  }
+
+  const gridLines = Array.from({ length: 7 }, (_, index) => {
+    const x = plot.left + (plot.width / 6) * index;
+    return `<line x1="${x}" y1="${plot.top}" x2="${x}" y2="${plot.top + plot.height}" class="offline-grid-line"/>`;
+  }).join("") + Array.from({ length: 5 }, (_, index) => {
+    const y = plot.top + (plot.height / 4) * index;
+    return `<line x1="${plot.left}" y1="${y}" x2="${plot.left + plot.width}" y2="${y}" class="offline-grid-line"/>`;
+  }).join("");
+  const markers = points.map(({ region, index, x, y }) => {
+    const [latitude, longitude] = REGION_COORDINATES[region.key];
+    const originalX = plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width;
+    const originalY = plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height;
+    return `<g class="offline-region-marker" role="button" tabindex="0" data-region="${escapeAttribute(region.key)}" aria-label="${escapeAttribute(`${region.province} ${region.district}, ${region.complexes.length}개 단지`)}">
+      <title>${escapeHTML(`${region.province} ${region.district} · ${region.complexes.length}개 단지`)}</title>
+      <line class="offline-connector" x1="${originalX}" y1="${originalY}" x2="${x}" y2="${y}"/>
+      <circle class="offline-marker-halo" cx="${x}" cy="${y}" r="16"/>
+      <circle class="offline-marker-dot" cx="${x}" cy="${y}" r="13"/>
+      <text class="offline-marker-count" x="${x}" y="${y + 3.5}">${region.complexes.length}</text>
+    </g>`;
+  }).join("");
+
+  mapElement.innerHTML = `
+    <svg class="offline-map" viewBox="0 0 800 500" role="img" aria-label="행정구역 중심 좌표를 표시한 오프라인 참고 지도">
+      <defs>
+        <pattern id="offline-map-dots" width="18" height="18" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#dfe6ee"/>
+        </pattern>
+      </defs>
+      <rect width="800" height="500" fill="url(#offline-map-dots)"/>
+      ${gridLines}
+      <text class="offline-map-label" x="${plot.left}" y="27">경기도 · 서울특별시</text>
+      <text class="offline-axis-label" x="${plot.left}" y="468">${minLongitude.toFixed(2)}°E</text>
+      <text class="offline-axis-label" x="${plot.left + plot.width / 2}" y="468" text-anchor="middle">${((minLongitude + maxLongitude) / 2).toFixed(2)}°E</text>
+      <text class="offline-axis-label" x="${plot.left + plot.width}" y="468" text-anchor="end">${maxLongitude.toFixed(2)}°E</text>
+      <text class="offline-axis-label" x="16" y="${plot.top + 4}">${maxLatitude.toFixed(2)}°N</text>
+      <text class="offline-axis-label" x="16" y="${plot.top + plot.height / 2}">${((minLatitude + maxLatitude) / 2).toFixed(2)}°N</text>
+      <text class="offline-axis-label" x="16" y="${plot.top + plot.height}">${minLatitude.toFixed(2)}°N</text>
+      ${markers}
+    </svg>`;
+
+  regionOverlays = [...mapElement.querySelectorAll(".offline-region-marker")].map((element) => ({ element }));
+  for (const marker of mapElement.querySelectorAll(".offline-region-marker")) {
+    marker.addEventListener("click", () => selectRegion(marker.dataset.region));
+    marker.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectRegion(marker.dataset.region);
+      }
+    });
+  }
+
+  document.querySelector("#map-caption-text").textContent =
+    "카카오맵 연결 없이 표시되는 오프라인 위치도입니다. 마커는 시·군·구 중심 좌표를 나타내며, 연결선은 마커가 겹치지 않도록 위치를 옮긴 표시입니다.";
+  elements.mapMessage.classList.add("hidden");
+}
+
+function showMapError() {
+  renderOfflineMap();
 }
 
 function loadKakaoMap() {
@@ -279,13 +386,16 @@ function loadKakaoMap() {
   script.async = true;
   script.onload = () => {
     if (!window.kakao?.maps) {
-      showMapError("카카오맵 SDK를 사용할 수 없습니다. Kakao Developers의 JavaScript 도메인 설정을 확인해 주세요.");
+      showMapError();
       return;
     }
-    kakao.maps.load(renderMap);
+    kakao.maps.load(renderKakaoMap);
   };
-  script.onerror = () => showMapError("카카오맵을 불러오지 못했습니다. 인터넷 연결과 Kakao Developers 도메인 설정을 확인해 주세요.");
+  script.onerror = showMapError;
   document.head.appendChild(script);
+  window.setTimeout(() => {
+    if (mapMode === "pending") showMapError();
+  }, 8000);
 }
 
 async function loadData() {
@@ -312,7 +422,7 @@ document.querySelector("#reset-map").addEventListener("click", () => {
   renderDetail(null);
   renderList();
   updateOverlayStyles();
-  if (map) map.setBounds(getMapBounds(), 55, 55, 55, 55);
+  if (mapMode === "kakao" && map) map.setBounds(getMapBounds(), 55, 55, 55, 55);
 });
 
 function getMapBounds() {

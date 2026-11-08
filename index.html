@@ -86,7 +86,7 @@
               <button id="reset-map" class="text-button" type="button">전체 지역 보기 <span aria-hidden="true">↗</span></button>
             </div>
             <div class="map-frame">
-              <div id="map" role="application" aria-label="카카오맵, 지역별 주택단지 분포"></div>
+              <div id="map" role="application" aria-label="행정구역별 주택단지 분포 지도"></div>
               <div id="map-message" class="map-message" role="status">
                 <span class="loader" aria-hidden="true"></span>
                 카카오맵을 불러오고 있습니다.
@@ -95,7 +95,7 @@
             </div>
             <div class="map-caption">
               <span class="caption-icon" aria-hidden="true">ⓘ</span>
-              좌표 정보가 없는 단지는 행정구역 중심에 표시됩니다. 마커를 누르면 해당 지역 단지를 볼 수 있습니다.
+              <span id="map-caption-text">좌표 정보가 없는 단지는 행정구역 중심에 표시됩니다. 마커를 누르면 해당 지역 단지를 볼 수 있습니다.</span>
             </div>
           </article>
 

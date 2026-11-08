@@ -187,6 +187,19 @@ h1 { margin: 6px 0 4px; font-size: 25px; font-weight: 700; letter-spacing: -1px;
 .kakao-region-marker span { display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border-radius: 6px; background: rgb(255 255 255 / 22%); font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; }
 .kakao-region-marker.selected { background: #252b3a; }
 
+.offline-map { display: block; width: 100%; height: 100%; min-height: 385px; }
+.offline-grid-line { stroke: #e6ebf0; stroke-dasharray: 3 6; stroke-width: 1; }
+.offline-map-label { fill: #465166; font-size: 15px; font-weight: 700; }
+.offline-axis-label { fill: #919aab; font-size: 10px; }
+.offline-connector { stroke: #a7a0ed; stroke-dasharray: 2 3; stroke-width: 1.5; }
+.offline-marker-halo { fill: #7669e8; opacity: .14; }
+.offline-marker-dot { fill: #6659db; stroke: #fff; stroke-width: 2.5; transition: fill .15s, r .15s; }
+.offline-marker-count { fill: #fff; font-family: Arial, sans-serif; font-size: 10px; font-weight: 700; pointer-events: none; text-anchor: middle; }
+.offline-region-marker { cursor: pointer; outline: none; }
+.offline-region-marker:hover .offline-marker-dot,
+.offline-region-marker:focus .offline-marker-dot { fill: #302a88; r: 15px; }
+.offline-region-marker.selected .offline-marker-dot { fill: #20283a; }
+
 @media (min-width: 1500px) {
   .main-content { padding-right: 55px; padding-left: 55px; }
   .workspace-grid { grid-template-columns: minmax(0, 1.65fr) minmax(390px, .85fr); }
@@ -214,6 +227,7 @@ h1 { margin: 6px 0 4px; font-size: 25px; font-weight: 700; letter-spacing: -1px;
   .map-panel { min-height: 420px; }
   .map-frame { min-height: 310px; }
   #map { min-height: 310px; }
+  .offline-map { min-height: 310px; }
   .detail-panel { min-height: 470px; }
   .page-footer { flex-direction: column; gap: 4px; }
 }
