@@ -1,0 +1,98 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>단지별 거주자 연령 분포 지도</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", "Malgun Gothic", sans-serif; color: #172033; background: #f3f6fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    header { height: 66px; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e4e9f1; }
+    h1 { margin: 0; font-size: 19px; }
+    header span { color: #68758a; font-size: 12px; }
+    main { height: calc(100vh - 66px); min-height: 560px; display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 12px; padding: 12px; }
+    #map { min-height: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px #24324a12; }
+    aside { min-height: 0; overflow-y: auto; }
+    .card { padding: 16px; margin-bottom: 12px; background: #fff; border: 1px solid #e8edf4; border-radius: 12px; box-shadow: 0 2px 12px #24324a0b; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { min-width: 0; }
+    .stat small, .muted { color: #718096; font-size: 11px; }
+    .stat strong { display: block; margin-top: 5px; font-size: 18px; white-space: nowrap; }
+    h2 { margin: 0 0 12px; font-size: 15px; }
+    .filter { display: grid; gap: 8px; }
+    input, select { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; color: inherit; }
+    .chart { display: grid; gap: 9px; }
+    .bar-row { display: grid; grid-template-columns: 48px minmax(60px, 1fr) 84px; gap: 8px; align-items: center; font-size: 12px; }
+    .bar-track { height: 13px; overflow: hidden; border-radius: 4px; background: #edf1f7; }
+    .bar { height: 100%; min-width: 0; border-radius: 4px; background: #4478d1; }
+    .bar-row .value { text-align: right; color: #556277; font-variant-numeric: tabular-nums; }
+    .selected-name { font-weight: 650; font-size: 15px; }
+    .selected-meta { margin: 5px 0 14px; color: #718096; font-size: 11px; line-height: 1.55; }
+    .empty { color: #718096; font-size: 12px; line-height: 1.6; }
+    .note { line-height: 1.55; }
+    #mapStatus { position: absolute; z-index: 2; left: 22px; bottom: 20px; padding: 8px 11px; border-radius: 7px; background: #fff; box-shadow: 0 1px 5px #17203333; color: #68758a; font-size: 12px; }
+    #map { position: relative; }
+    .marker-legend { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: 10px; color: #59677b; font-size: 11px; }
+    .dot { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; }
+    .kakao-age-marker { border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 5px #17203377; }
+    @media (max-width: 820px) {
+      header { height: auto; gap: 10px; align-items: flex-start; flex-direction: column; }
+      main { height: auto; min-height: calc(100vh - 90px); grid-template-columns: 1fr; }
+      #map { height: 58vh; min-height: 390px; }
+      aside { overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>단지별 거주자 연령 분포 지도</h1>
+    <span>2025년 10월 현황 · 동거 거주자 기준 · 지도 점을 누르면 단지별 차트 표시</span>
+  </header>
+  <main>
+    <div id="map" aria-label="단지 위치 지도"><div id="mapStatus" role="status">카카오 지도를 불러오는 중입니다.</div></div>
+    <aside>
+      <section class="card stats" id="stats"></section>
+      <section class="card">
+        <h2>단지 찾기</h2>
+        <div class="filter">
+          <input id="search" type="search" placeholder="단지명 또는 코드 검색" aria-label="단지 검색">
+          <select id="ageFilter" aria-label="연령 필터">
+            <option value="">연령대 필터 없음</option>
+            <option value="0-9">0–9세가 최다 연령대인 단지</option>
+            <option value="10-19">10–19세가 최다 연령대인 단지</option>
+            <option value="20-29">20–29세가 최다 연령대인 단지</option>
+            <option value="30-39">30–39세가 최다 연령대인 단지</option>
+            <option value="40-49">40–49세가 최다 연령대인 단지</option>
+            <option value="50-59">50–59세가 최다 연령대인 단지</option>
+            <option value="60-69">60–69세가 최다 연령대인 단지</option>
+            <option value="70-79">70–79세가 최다 연령대인 단지</option>
+            <option value="80-89">80–89세가 최다 연령대인 단지</option>
+            <option value="90+">90세 이상이 최다 연령대인 단지</option>
+          </select>
+        </div>
+        <div class="marker-legend">
+          <span><i class="dot" style="background:#2b8a6e"></i>평균 40세 미만</span>
+          <span><i class="dot" style="background:#4478d1"></i>40–59세</span>
+          <span><i class="dot" style="background:#e39a32"></i>60–69세</span>
+          <span><i class="dot" style="background:#ab5a86"></i>70세 이상</span>
+        </div>
+      </section>
+      <section class="card">
+        <h2>전체 연령대</h2>
+        <div class="chart" id="overallChart"></div>
+      </section>
+      <section class="card" id="detail">
+        <h2>단지별 연령대</h2>
+        <div class="empty">지도에서 단지를 선택하면 연령 구성 차트가 표시됩니다.</div>
+      </section>
+      <section class="card note">
+        <h2>해석·주의</h2>
+        <div class="muted">점의 색은 해당 단지의 평균연령 구간, 크기는 집계 거주자 수를 나타냅니다. 각 막대는 선택한 단지 내 해당 연령대 비율입니다. 연령은 10세 구간이며 끝 구간은 90세 이상입니다. 주소 좌표는 ArcGIS World Geocoding Service의 주소 매칭 결과로 표시했습니다. 일부 좌표는 건물 입구가 아닌 주소 지점일 수 있습니다. 원자료의 동거여부가 Y인 행만 집계했으며, 비동거 가족은 제외했습니다. 집계값은 개인이 아닌 단지 단위이며, 작은 단지의 비율은 표본 수가 적어 변동성이 클 수 있습니다.</div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="resident-age-map.js" defer></script>
+</body>
+</html>
