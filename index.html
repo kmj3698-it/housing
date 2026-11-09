@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f7fb">
     <title>입주민 연령대 대시보드</title>
-    <link rel="preconnect" href="https://dapi.kakao.com">
     <link rel="stylesheet" href="styles.css">
     <script src="app.js" defer></script>
   </head>
@@ -86,10 +85,10 @@
               <button id="reset-map" class="text-button" type="button">전체 지역 보기 <span aria-hidden="true">↗</span></button>
             </div>
             <div class="map-frame">
-              <div id="map" role="application" aria-label="행정구역별 주택단지 분포 지도"></div>
+              <div id="map" role="application" aria-label="OpenStreetMap 기반 지역별 주택단지 분포 지도"></div>
               <div id="map-message" class="map-message" role="status">
                 <span class="loader" aria-hidden="true"></span>
-                카카오맵을 불러오고 있습니다.
+                오픈스트리트맵을 불러오고 있습니다.
               </div>
               <div class="map-legend"><span class="legend-marker"></span>단지 수 · 지역 중심 참고 위치</div>
             </div>

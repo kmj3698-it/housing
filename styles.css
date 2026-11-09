@@ -182,10 +182,12 @@ h1 { margin: 6px 0 4px; font-size: 25px; font-weight: 700; letter-spacing: -1px;
 .no-results { padding: 18px 8px; color: #969eae; font-size: 10px; text-align: center; }
 .page-footer { display: flex; justify-content: space-between; gap: 16px; padding: 13px 1px 0; color: #9aa2b1; font-size: 9px; }
 
-.kakao-region-marker { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #fff; border-radius: 8px; background: #6257dc; box-shadow: 0 2px 7px rgb(47 47 86 / 24%); color: #fff; cursor: pointer; font-family: "Malgun Gothic", "맑은 고딕", Arial, sans-serif; white-space: nowrap; }
-.kakao-region-marker strong { font-size: 10px; font-weight: 700; }
-.kakao-region-marker span { display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border-radius: 6px; background: rgb(255 255 255 / 22%); font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; }
-.kakao-region-marker.selected { background: #252b3a; }
+.osm-region-marker { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 2px solid #fff; border-radius: 50%; background: #6257dc; box-shadow: 0 2px 7px rgb(47 47 86 / 30%); color: #fff; cursor: pointer; font-family: Arial, sans-serif; }
+.osm-region-marker span { display: grid; min-width: 16px; height: 16px; place-items: center; padding: 0 2px; border-radius: 10px; background: rgb(255 255 255 / 22%); font-size: 9px; font-weight: 700; }
+.osm-region-marker.selected { background: #252b3a; transform: scale(1.12); }
+.leaflet-container { z-index: 1; background: #eef2f5; font-family: inherit; }
+.leaflet-control-attribution { font-size: 9px !important; }
+.leaflet-control-zoom a { color: #505a6c !important; }
 
 .offline-map { display: block; width: 100%; height: 100%; min-height: 385px; }
 .offline-grid-line { stroke: #e6ebf0; stroke-dasharray: 3 6; stroke-width: 1; }

@@ -11,11 +11,11 @@ PowerShell에서 저장소 폴더로 이동한 뒤 다음을 실행합니다. �
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\serve.ps1
 ```
 
-브라우저에서 `http://localhost:8080/`을 엽니다. Kakao Developers 앱 설정의 플랫폼 > Web 도메인에 `http://localhost:8080`을 등록하면 카카오맵을 사용할 수 있습니다. 카카오맵 연결에 실패하거나 제한 시간 안에 응답하지 않으면 별도 외부 서비스 없이 표시되는 오프라인 위치도로 자동 전환됩니다. 서버를 종료하려면 실행 중인 PowerShell 창에서 `Ctrl+C`를 누릅니다.
+브라우저에서 `http://localhost:8080/`을 엽니다. 지도는 별도 API 키가 필요 없는 OpenStreetMap 타일을 Leaflet으로 표시합니다. Leaflet CDN이나 지도 타일 연결에 실패하면 외부 서비스 없이 표시되는 오프라인 위치도로 자동 전환됩니다. 서버를 종료하려면 실행 중인 PowerShell 창에서 `Ctrl+C`를 누릅니다.
 
 ## 지도 위치 안내
 
-원본 CSV에 위도·경도 좌표가 없어 단지 마커는 해당 시·군·구의 중심 참고 위치로 표시합니다. 지도는 Kakao Maps JavaScript SDK를 우선 사용하고, 연결할 수 없는 경우 로컬 SVG 위치도를 표시합니다. 두 방식 모두 단지 주소를 외부 지오코딩 서비스로 전송하지 않습니다.
+원본 CSV에 위도·경도 좌표가 없어 단지 마커는 해당 시·군·구의 중심 참고 위치로 표시합니다. 지도는 OpenStreetMap 타일을 사용하고 연결할 수 없으면 로컬 SVG 위치도를 표시합니다. 단지 주소는 외부 지오코딩 서비스로 전송하지 않습니다.
 
 ## 집계 기준
 

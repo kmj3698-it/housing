@@ -1,4 +1,3 @@
-const KAKAO_JAVASCRIPT_KEY = "41d96178231fd72f57df81ef7c2af5d5";
 const AGE_LABELS = ["0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70+"];
 const REGION_COORDINATES = {
   "경기도|과천시": [37.4292, 126.9876],
@@ -196,8 +195,8 @@ function selectComplex(code) {
   renderList();
   updateOverlayStyles();
   const point = REGION_COORDINATES[selectedRegionKey];
-  if (point && mapMode === "kakao" && map) {
-    map.panTo(new kakao.maps.LatLng(point[0], point[1]));
+  if (point && mapMode === "osm" && map) {
+    map.setView(point, Math.max(map.getZoom(), 11));
   }
 }
 
@@ -212,9 +211,9 @@ function selectRegion(key) {
 
 function updateOverlayStyles() {
   for (const overlay of regionOverlays) {
-    const button = overlay.element;
+    const button = overlay.element || overlay.marker?.getElement()?.querySelector(".osm-region-marker");
     if (!button) continue;
-    button.classList.toggle("selected", button.dataset.region === selectedRegionKey);
+    button.classList.toggle("selected", (button.dataset.region || overlay.regionKey) === selectedRegionKey);
   }
 }
 
@@ -231,51 +230,75 @@ function collectMapRegions() {
   return regions;
 }
 
-function renderKakaoMap() {
-  mapMode = "kakao";
+function renderOpenStreetMap() {
+  mapMode = "osm";
   const mapElement = document.querySelector("#map");
-  map = new kakao.maps.Map(mapElement, {
-    center: new kakao.maps.LatLng(37.32, 127.06),
-    level: 8,
-  });
-
+  map = L.map(mapElement, { scrollWheelZoom: false });
   const regions = collectMapRegions();
-  const bounds = new kakao.maps.LatLngBounds();
+  const bounds = [];
+  let hasLoadedTile = false;
+  let tileAttempts = 0;
+  let tileErrors = 0;
+  const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  });
+  tileLayer.on("tileloadstart", () => {
+    tileAttempts += 1;
+  });
+  tileLayer.on("tileload", () => {
+    hasLoadedTile = true;
+    elements.mapMessage.classList.add("hidden");
+  });
+  tileLayer.on("tileerror", () => {
+    tileErrors += 1;
+  });
+  tileLayer.on("load", () => {
+    if (mapMode === "osm" && tileAttempts && tileErrors / tileAttempts >= 0.5) {
+      renderOfflineMap();
+    }
+  });
+  tileLayer.addTo(map);
+
   for (const region of regions.values()) {
-    const [lat, lng] = REGION_COORDINATES[region.key];
-    const position = new kakao.maps.LatLng(lat, lng);
-    bounds.extend(position);
-    const button = document.createElement("button");
-    button.className = "kakao-region-marker";
-    button.type = "button";
-    button.dataset.region = region.key;
-    button.innerHTML = `<strong>${escapeHTML(region.district.replace(/시|구$/, ""))}</strong><span>${region.complexes.length}</span>`;
-    button.title = `${region.province} ${region.district} · ${region.complexes.length}개 단지`;
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
+    const position = REGION_COORDINATES[region.key];
+    bounds.push(position);
+    const marker = L.marker(position, {
+      icon: L.divIcon({
+        className: "",
+        html: `<button class="osm-region-marker" type="button" title="${escapeAttribute(`${region.province} ${region.district}`)}" aria-label="${escapeAttribute(`${region.province} ${region.district}, ${region.complexes.length}개 단지`)}"><span>${region.complexes.length}</span></button>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      }),
+    });
+    marker.addTo(map);
+    marker.bindTooltip(`${region.province} ${region.district}`);
+    marker.on("click", () => {
       selectRegion(region.key);
+      map.setView(position, 12);
     });
-    const overlay = new kakao.maps.CustomOverlay({
-      map,
-      position,
-      content: button,
-      yAnchor: 1,
-      clickable: true,
-    });
-    regionOverlays.push({ overlay, element: button });
+    regionOverlays.push({ marker, regionKey: region.key });
   }
 
-  if (!bounds.isEmpty()) {
-    map.setBounds(bounds, 55, 55, 55, 55);
+  if (bounds.length) {
+    map.fitBounds(L.latLngBounds(bounds), { padding: [35, 35], maxZoom: 10 });
   }
-  window.setTimeout(() => map.relayout(), 0);
-  elements.mapMessage.classList.add("hidden");
+  document.querySelector("#map-caption-text").textContent =
+    "OpenStreetMap 지도를 표시합니다. 마커는 시·군·구 중심 참고 위치이며, 정확한 단지 좌표는 아닙니다.";
+  window.setTimeout(() => {
+    if (mapMode === "osm" && !hasLoadedTile) {
+      map.remove();
+      renderOfflineMap();
+    }
+  }, 8000);
 }
 
 function renderOfflineMap() {
+  if (map) map.remove();
   map = null;
   mapMode = "offline";
   const mapElement = document.querySelector("#map");
+  mapElement.innerHTML = "";
   const regions = [...collectMapRegions().values()];
   const longitudes = regions.map((region) => REGION_COORDINATES[region.key][1]);
   const latitudes = regions.map((region) => REGION_COORDINATES[region.key][0]);
@@ -286,11 +309,10 @@ function renderOfflineMap() {
   const plot = { left: 76, top: 52, width: 650, height: 390 };
   const spanLongitude = maxLongitude - minLongitude || 1;
   const spanLatitude = maxLatitude - minLatitude || 1;
-  const points = regions.map((region, index) => {
+  const points = regions.map((region) => {
     const [latitude, longitude] = REGION_COORDINATES[region.key];
     return {
       region,
-      index,
       x: plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width,
       y: plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height,
     };
@@ -328,7 +350,7 @@ function renderOfflineMap() {
     const y = plot.top + (plot.height / 4) * index;
     return `<line x1="${plot.left}" y1="${y}" x2="${plot.left + plot.width}" y2="${y}" class="offline-grid-line"/>`;
   }).join("");
-  const markers = points.map(({ region, index, x, y }) => {
+  const markers = points.map(({ region, x, y }) => {
     const [latitude, longitude] = REGION_COORDINATES[region.key];
     const originalX = plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width;
     const originalY = plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height;
@@ -370,32 +392,37 @@ function renderOfflineMap() {
       }
     });
   }
-
   document.querySelector("#map-caption-text").textContent =
-    "카카오맵 연결 없이 표시되는 오프라인 위치도입니다. 마커는 시·군·구 중심 좌표를 나타내며, 연결선은 마커가 겹치지 않도록 위치를 옮긴 표시입니다.";
+    "외부 지도 연결 없이 표시되는 오프라인 위치도입니다. 마커는 시·군·구 중심 좌표를 나타내며, 연결선은 마커가 겹치지 않도록 위치를 옮긴 표시입니다.";
   elements.mapMessage.classList.add("hidden");
 }
 
-function showMapError() {
+function loadOfflineMap() {
   renderOfflineMap();
 }
 
-function loadKakaoMap() {
+function loadOpenStreetMap() {
+  const stylesheet = document.createElement("link");
+  stylesheet.rel = "stylesheet";
+  stylesheet.href = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(stylesheet);
+
   const script = document.createElement("script");
-  script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_JAVASCRIPT_KEY)}`;
+  script.src = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
   script.async = true;
   script.onload = () => {
-    if (!window.kakao?.maps) {
-      showMapError();
+    if (mapMode !== "pending") return;
+    if (!window.L) {
+      loadOfflineMap();
       return;
     }
-    kakao.maps.load(renderKakaoMap);
+    renderOpenStreetMap();
   };
-  script.onerror = showMapError;
+  script.onerror = loadOfflineMap;
   document.head.appendChild(script);
   window.setTimeout(() => {
-    if (mapMode === "pending") showMapError();
-  }, 8000);
+    if (mapMode === "pending") loadOfflineMap();
+  }, 5000);
 }
 
 async function loadData() {
@@ -422,16 +449,13 @@ document.querySelector("#reset-map").addEventListener("click", () => {
   renderDetail(null);
   renderList();
   updateOverlayStyles();
-  if (mapMode === "kakao" && map) map.setBounds(getMapBounds(), 55, 55, 55, 55);
+  if (mapMode === "osm" && map) map.fitBounds(L.latLngBounds(getMapBounds()), { padding: [35, 35], maxZoom: 10 });
 });
 
 function getMapBounds() {
-  const bounds = new kakao.maps.LatLngBounds();
-  for (const complex of complexes) {
-    const point = REGION_COORDINATES[regionKey(complex)];
-    if (point) bounds.extend(new kakao.maps.LatLng(point[0], point[1]));
-  }
-  return bounds;
+  return complexes
+    .map((complex) => REGION_COORDINATES[regionKey(complex)])
+    .filter(Boolean);
 }
 
 document.addEventListener("keydown", (event) => {
@@ -442,7 +466,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 loadData()
-  .then(loadKakaoMap)
+  .then(loadOpenStreetMap)
   .catch((error) => {
     elements.mapMessage.classList.add("error");
     elements.mapMessage.textContent = error.message;
