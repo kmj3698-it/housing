@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7fb">
+    <title>입주민 연령대 대시보드</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="주거 데이터 홈">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M5 15.1 16 6l11 9.1v11H5z"/><path d="M12 26v-8h8v8M4 15l12-10 12 10"/></svg>
+          </span>
+          <span><strong>집계 데이터</strong><small>HOUSING INSIGHT</small></span>
+        </a>
+        <div class="sidebar-label">분석 메뉴</div>
+        <a class="nav-item active" href="#overview">
+          <span class="nav-icon" aria-hidden="true">⌖</span>
+          <span>연령대 지도</span>
+          <span class="nav-dot" aria-hidden="true"></span>
+        </a>
+        <div class="sidebar-note">
+          <span class="note-icon" aria-hidden="true">i</span>
+          <p>주소 검색 결과로 단지 위치를 표시하며, <strong>건물 출입구 좌표와 다를 수 있습니다.</strong></p>
+        </div>
+        <div class="sidebar-footer">
+          <span class="privacy-icon" aria-hidden="true">▣</span>
+          <span>개인 식별 정보 없이<br>단지별로 집계했습니다.</span>
+        </div>
+      </aside>
+
+      <main id="overview" class="main-content">
+        <header class="topbar">
+          <div class="breadcrumb">주거 현황 <span>/</span> 입주민 분석</div>
+          <div class="snapshot-pill"><span class="status-dot"></span><span id="snapshot-label">2025년 10월 기준</span></div>
+        </header>
+
+        <section class="page-heading">
+          <div>
+            <div class="eyebrow">RESIDENT DEMOGRAPHICS</div>
+            <h1>단지별 입주민 연령대</h1>
+            <p class="page-description">지도에서 지역을 선택하고, 단지별 연령 분포를 확인하세요.</p>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.7" cy="8.7" r="5.6"/><path d="m13 13 4 4"/></svg>
+            <input id="complex-search" type="search" placeholder="단지명 검색" autocomplete="off" aria-label="단지명 검색">
+            <kbd>⌘ K</kbd>
+          </label>
+        </section>
+
+        <section class="metric-grid" aria-label="전체 현황">
+          <article class="metric-card">
+            <div class="metric-top"><span>분석 단지</span><span class="metric-icon purple">⌂</span></div>
+            <div class="metric-value" id="total-complexes">—</div>
+            <div class="metric-foot"><span class="metric-accent" id="district-count">—</span>개 시·군·구</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-top"><span>집계 입주민</span><span class="metric-icon blue">♙</span></div>
+            <div class="metric-value" id="total-residents">—</div>
+            <div class="metric-foot">연령 정보가 있는 입주민</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-top"><span>60세 이상</span><span class="metric-icon orange">◷</span></div>
+            <div class="metric-value" id="senior-share">—</div>
+            <div class="metric-foot"><span class="metric-accent" id="senior-count">—</span>명 · 전체 기준</div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-top"><span>가장 큰 연령대</span><span class="metric-icon green">↗</span></div>
+            <div class="metric-value metric-value-label" id="largest-age-group">—</div>
+            <div class="metric-foot"><span class="metric-accent" id="largest-age-share">—</span> · 전체 기준</div>
+          </article>
+        </section>
+
+        <section class="workspace-grid">
+          <article class="panel map-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-kicker">INTERACTIVE MAP</div>
+                <h2>지역별 단지 분포</h2>
+              </div>
+              <button id="reset-map" class="text-button" type="button">전체 지역 보기 <span aria-hidden="true">↗</span></button>
+            </div>
+            <div class="map-frame">
+              <div id="map" role="application" aria-label="OpenStreetMap 기반 지역별 주택단지 분포 지도"></div>
+              <div id="map-message" class="map-message" role="status">
+                <span class="loader" aria-hidden="true"></span>
+                오픈스트리트맵을 불러오고 있습니다.
+              </div>
+              <div class="map-legend"><span class="legend-marker"></span>건물 단위 검색 <span class="legend-road"></span>도로 주소 참고 <span class="legend-estimate"></span>행정구역 참고</div>
+            </div>
+            <div class="map-caption">
+              <span class="caption-icon" aria-hidden="true">ⓘ</span>
+              <span id="map-caption-text">건물 단위 검색 결과와 도로 주소 참고 위치를 구분합니다. 건물 단위 좌표도 출입구와 다를 수 있습니다.</span>
+            </div>
+          </article>
+
+          <aside class="panel detail-panel" aria-live="polite">
+            <div class="panel-header detail-header">
+              <div>
+                <div class="panel-kicker">AGE DISTRIBUTION</div>
+                <h2 id="detail-title">단지를 선택하세요</h2>
+              </div>
+              <span id="detail-region" class="region-tag">전체</span>
+            </div>
+            <div id="detail-content" class="detail-content">
+              <div class="empty-detail">
+                <span class="empty-icon" aria-hidden="true">⌂</span>
+                <p>지도 마커를 누르거나<br>아래 목록에서 단지를 선택하세요.</p>
+              </div>
+            </div>
+            <div class="detail-divider"></div>
+            <div class="complex-list-heading">
+              <div>
+                <h3 id="list-title">단지 목록</h3>
+                <span id="list-count" class="list-count">불러오는 중</span>
+              </div>
+              <select id="sort-select" aria-label="단지 정렬">
+                <option value="name">이름순</option>
+                <option value="residents">입주민 많은순</option>
+                <option value="senior">60세 이상 비율순</option>
+              </select>
+            </div>
+            <div id="complex-list" class="complex-list" role="list"></div>
+          </aside>
+        </section>
+        <footer class="page-footer">
+          <span>연령대는 10세 단위로 집계하며 70세 이상은 하나의 구간으로 표시합니다.</span>
+          <span>개별 세대 정보는 대시보드에 포함되지 않습니다.</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
