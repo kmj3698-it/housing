@@ -61,6 +61,22 @@ function regionKey(complex) {
   return `${complex.province}|${complex.district}`;
 }
 
+function hasAddressCoordinates(complex) {
+  return Number.isFinite(complex.lat)
+    && Number.isFinite(complex.lon)
+    && Math.abs(complex.lat) <= 90
+    && Math.abs(complex.lon) <= 180;
+}
+
+function hasBuildingCoordinates(complex) {
+  return hasAddressCoordinates(complex) && complex.coordinatePrecision === "building";
+}
+
+function coordinatesFor(complex) {
+  if (hasAddressCoordinates(complex)) return [complex.lat, complex.lon];
+  return REGION_COORDINATES[regionKey(complex)] || null;
+}
+
 function sumAges(complex) {
   return AGE_LABELS.reduce((sum, label) => sum + (complex.ages[label] || 0), 0);
 }
@@ -194,9 +210,10 @@ function selectComplex(code) {
   renderDetail(complex);
   renderList();
   updateOverlayStyles();
-  const point = REGION_COORDINATES[selectedRegionKey];
+  const point = coordinatesFor(complex);
   if (point && mapMode === "osm" && map) {
-    map.setView(point, Math.max(map.getZoom(), 11));
+    const targetZoom = hasBuildingCoordinates(complex) ? 14 : (hasAddressCoordinates(complex) ? 13 : 11);
+    map.setView(point, Math.max(map.getZoom(), targetZoom));
   }
 }
 
@@ -211,6 +228,17 @@ function selectRegion(key) {
 
 function updateOverlayStyles() {
   for (const overlay of regionOverlays) {
+    if (overlay.accuracy === "building" || overlay.accuracy === "address") {
+      if (overlay.marker) {
+        const fillColor = overlay.accuracy === "building" ? "#6a5be8" : "#df963b";
+        overlay.marker.setStyle(overlay.code === selectedComplexCode
+          ? { color: "#252b3a", fillColor, radius: 8 }
+          : { color: "#fff", fillColor, radius: 5 });
+      } else {
+        overlay.element.classList.toggle("selected", overlay.code === selectedComplexCode);
+      }
+      continue;
+    }
     const button = overlay.element || overlay.marker?.getElement()?.querySelector(".osm-region-marker");
     if (!button) continue;
     button.classList.toggle("selected", (button.dataset.region || overlay.regionKey) === selectedRegionKey);
@@ -223,9 +251,10 @@ function collectMapRegions() {
     const key = regionKey(complex);
     if (!key || !REGION_COORDINATES[key]) continue;
     if (!regions.has(key)) {
-      regions.set(key, { key, province: complex.province, district: complex.district, complexes: [] });
+      regions.set(key, { key, province: complex.province, district: complex.district, complexes: [], unresolved: [] });
     }
     regions.get(key).complexes.push(complex);
+    if (!hasAddressCoordinates(complex)) regions.get(key).unresolved.push(complex);
   }
   return regions;
 }
@@ -236,6 +265,8 @@ function renderOpenStreetMap() {
   map = L.map(mapElement, { scrollWheelZoom: false });
   const regions = collectMapRegions();
   const bounds = [];
+  const complexLayer = L.layerGroup();
+  const overviewLayer = L.layerGroup();
   let hasLoadedTile = false;
   let tileAttempts = 0;
   let tileErrors = 0;
@@ -266,25 +297,56 @@ function renderOpenStreetMap() {
     const marker = L.marker(position, {
       icon: L.divIcon({
         className: "",
-        html: `<button class="osm-region-marker" type="button" title="${escapeAttribute(`${region.province} ${region.district}`)}" aria-label="${escapeAttribute(`${region.province} ${region.district}, ${region.complexes.length}개 단지`)}"><span>${region.complexes.length}</span></button>`,
+        html: `<button class="osm-region-marker approximate" type="button" title="${escapeAttribute(`${region.province} ${region.district} · 행정구역 참고 위치`)}" aria-label="${escapeAttribute(`${region.province} ${region.district}, ${region.complexes.length}개 단지의 행정구역 참고 위치`)}"><span>${region.complexes.length}</span></button>`,
         iconSize: [28, 28],
         iconAnchor: [14, 14],
       }),
     });
-    marker.addTo(map);
+    marker.addTo(overviewLayer);
     marker.bindTooltip(`${region.province} ${region.district}`);
     marker.on("click", () => {
       selectRegion(region.key);
       map.setView(position, 12);
     });
-    regionOverlays.push({ marker, regionKey: region.key });
+    regionOverlays.push({ marker, regionKey: region.key, accuracy: "region" });
+  }
+  overviewLayer.addTo(map);
+
+  for (const complex of complexes) {
+    if (!hasAddressCoordinates(complex)) continue;
+    const position = [complex.lat, complex.lon];
+    bounds.push(position);
+    const isBuilding = hasBuildingCoordinates(complex);
+    const fillColor = isBuilding ? "#6a5be8" : "#df963b";
+    const marker = L.circleMarker(position, {
+      radius: 5,
+      color: "#fff",
+      weight: 2,
+      fillColor,
+      fillOpacity: 0.9,
+    });
+    marker.bindTooltip(`${escapeHTML(complex.name)} · ${isBuilding ? "건물 단위 검색" : "도로 주소 참고"}`, { direction: "top" });
+    marker.on("click", () => {
+      selectComplex(complex.code);
+      map.setView(position, Math.max(map.getZoom(), isBuilding ? 14 : 13));
+    });
+    marker.addTo(complexLayer);
+    regionOverlays.push({ marker, code: complex.code, accuracy: isBuilding ? "building" : "address" });
   }
 
+  function syncLocationLayers() {
+    const showComplexes = map.getZoom() >= 11;
+    if (showComplexes && !map.hasLayer(complexLayer)) map.addLayer(complexLayer);
+    if (!showComplexes && map.hasLayer(complexLayer)) map.removeLayer(complexLayer);
+  }
+
+  map.on("zoomend", syncLocationLayers);
+  syncLocationLayers();
   if (bounds.length) {
     map.fitBounds(L.latLngBounds(bounds), { padding: [35, 35], maxZoom: 10 });
   }
   document.querySelector("#map-caption-text").textContent =
-    "OpenStreetMap 지도를 표시합니다. 마커는 시·군·구 중심 참고 위치이며, 정확한 단지 좌표는 아닙니다.";
+    `${complexes.filter(hasBuildingCoordinates).length}개 단지는 건물 단위 검색 결과, ${complexes.filter((complex) => hasAddressCoordinates(complex) && !hasBuildingCoordinates(complex)).length}개 단지는 도로 주소 참고 위치, 나머지는 시·군·구 중심 참고 위치입니다. 건물 단위 좌표도 출입구와 다를 수 있습니다.`;
   window.setTimeout(() => {
     if (mapMode === "osm" && !hasLoadedTile) {
       map.remove();
@@ -299,9 +361,14 @@ function renderOfflineMap() {
   mapMode = "offline";
   const mapElement = document.querySelector("#map");
   mapElement.innerHTML = "";
-  const regions = [...collectMapRegions().values()];
-  const longitudes = regions.map((region) => REGION_COORDINATES[region.key][1]);
-  const latitudes = regions.map((region) => REGION_COORDINATES[region.key][0]);
+  const approximateRegions = [...collectMapRegions().values()].filter((region) => region.unresolved.length);
+  const addressComplexes = complexes.filter(hasAddressCoordinates);
+  const coordinates = [
+    ...addressComplexes.map((complex) => [complex.lat, complex.lon]),
+    ...approximateRegions.map((region) => REGION_COORDINATES[region.key]),
+  ];
+  const longitudes = coordinates.map(([, longitude]) => longitude);
+  const latitudes = coordinates.map(([latitude]) => latitude);
   const minLongitude = Math.min(...longitudes);
   const maxLongitude = Math.max(...longitudes);
   const minLatitude = Math.min(...latitudes);
@@ -309,39 +376,10 @@ function renderOfflineMap() {
   const plot = { left: 76, top: 52, width: 650, height: 390 };
   const spanLongitude = maxLongitude - minLongitude || 1;
   const spanLatitude = maxLatitude - minLatitude || 1;
-  const points = regions.map((region) => {
-    const [latitude, longitude] = REGION_COORDINATES[region.key];
-    return {
-      region,
-      x: plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width,
-      y: plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height,
-    };
+  const project = ([latitude, longitude]) => ({
+    x: plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width,
+    y: plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height,
   });
-
-  for (let iteration = 0; iteration < 100; iteration += 1) {
-    for (let i = 0; i < points.length; i += 1) {
-      for (let j = i + 1; j < points.length; j += 1) {
-        const first = points[i];
-        const second = points[j];
-        const dx = second.x - first.x;
-        const dy = second.y - first.y;
-        const distance = Math.hypot(dx, dy) || 0.01;
-        const minimumDistance = 35;
-        if (distance >= minimumDistance) continue;
-        const movement = (minimumDistance - distance) * 0.025;
-        const offsetX = (dx / distance) * movement;
-        const offsetY = (dy / distance) * movement;
-        first.x -= offsetX;
-        first.y -= offsetY;
-        second.x += offsetX;
-        second.y += offsetY;
-      }
-    }
-    for (const point of points) {
-      point.x = Math.min(752, Math.max(50, point.x));
-      point.y = Math.min(445, Math.max(44, point.y));
-    }
-  }
 
   const gridLines = Array.from({ length: 7 }, (_, index) => {
     const x = plot.left + (plot.width / 6) * index;
@@ -350,16 +388,21 @@ function renderOfflineMap() {
     const y = plot.top + (plot.height / 4) * index;
     return `<line x1="${plot.left}" y1="${y}" x2="${plot.left + plot.width}" y2="${y}" class="offline-grid-line"/>`;
   }).join("");
-  const markers = points.map(({ region, x, y }) => {
-    const [latitude, longitude] = REGION_COORDINATES[region.key];
-    const originalX = plot.left + ((longitude - minLongitude) / spanLongitude) * plot.width;
-    const originalY = plot.top + ((maxLatitude - latitude) / spanLatitude) * plot.height;
+  const addressMarkers = addressComplexes.map((complex) => {
+    const { x, y } = project([complex.lat, complex.lon]);
+    const isBuilding = hasBuildingCoordinates(complex);
+    const markerClass = isBuilding ? "offline-building-dot" : "offline-address-dot";
+    return `<g class="offline-complex-marker${isBuilding ? " building" : ""}" role="button" tabindex="0" data-code="${escapeAttribute(complex.code)}" aria-label="${escapeAttribute(`${complex.name} · ${isBuilding ? "건물 단위 검색 위치" : "도로 주소 참고 위치"}`)}">
+      <title>${escapeHTML(complex.name)}</title>
+      <circle class="${markerClass}" cx="${x}" cy="${y}" r="5"/>
+    </g>`;
+  }).join("");
+  const approximateMarkers = approximateRegions.map((region) => {
+    const { x, y } = project(REGION_COORDINATES[region.key]);
     return `<g class="offline-region-marker" role="button" tabindex="0" data-region="${escapeAttribute(region.key)}" aria-label="${escapeAttribute(`${region.province} ${region.district}, ${region.complexes.length}개 단지`)}">
-      <title>${escapeHTML(`${region.province} ${region.district} · ${region.complexes.length}개 단지`)}</title>
-      <line class="offline-connector" x1="${originalX}" y1="${originalY}" x2="${x}" y2="${y}"/>
-      <circle class="offline-marker-halo" cx="${x}" cy="${y}" r="16"/>
-      <circle class="offline-marker-dot" cx="${x}" cy="${y}" r="13"/>
-      <text class="offline-marker-count" x="${x}" y="${y + 3.5}">${region.complexes.length}</text>
+      <title>${escapeHTML(`${region.province} ${region.district} · ${region.unresolved.length}개 단지 위치 미확인`)}</title>
+      <circle class="offline-estimate-dot" cx="${x}" cy="${y}" r="8"/>
+      <text class="offline-estimate-count" x="${x}" y="${y + 3}">${region.unresolved.length}</text>
     </g>`;
   }).join("");
 
@@ -379,10 +422,31 @@ function renderOfflineMap() {
       <text class="offline-axis-label" x="16" y="${plot.top + 4}">${maxLatitude.toFixed(2)}°N</text>
       <text class="offline-axis-label" x="16" y="${plot.top + plot.height / 2}">${((minLatitude + maxLatitude) / 2).toFixed(2)}°N</text>
       <text class="offline-axis-label" x="16" y="${plot.top + plot.height}">${minLatitude.toFixed(2)}°N</text>
-      ${markers}
+      ${addressMarkers}
+      ${approximateMarkers}
     </svg>`;
 
-  regionOverlays = [...mapElement.querySelectorAll(".offline-region-marker")].map((element) => ({ element }));
+  regionOverlays = [
+    ...[...mapElement.querySelectorAll(".offline-complex-marker")].map((element) => ({
+      element,
+      code: element.dataset.code,
+      accuracy: element.classList.contains("building") ? "building" : "address",
+    })),
+    ...[...mapElement.querySelectorAll(".offline-region-marker")].map((element) => ({
+      element,
+      regionKey: element.dataset.region,
+      accuracy: "region",
+    })),
+  ];
+  for (const marker of mapElement.querySelectorAll(".offline-complex-marker")) {
+    marker.addEventListener("click", () => selectComplex(marker.dataset.code));
+    marker.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectComplex(marker.dataset.code);
+      }
+    });
+  }
   for (const marker of mapElement.querySelectorAll(".offline-region-marker")) {
     marker.addEventListener("click", () => selectRegion(marker.dataset.region));
     marker.addEventListener("keydown", (event) => {
@@ -393,7 +457,7 @@ function renderOfflineMap() {
     });
   }
   document.querySelector("#map-caption-text").textContent =
-    "외부 지도 연결 없이 표시되는 오프라인 위치도입니다. 마커는 시·군·구 중심 좌표를 나타내며, 연결선은 마커가 겹치지 않도록 위치를 옮긴 표시입니다.";
+    `${complexes.filter(hasBuildingCoordinates).length}개 단지는 건물 단위 검색 결과, ${addressComplexes.length - complexes.filter(hasBuildingCoordinates).length}개 단지는 도로 주소 참고 위치, 나머지는 시·군·구 중심 참고 위치입니다. 건물 단위 좌표도 출입구와 다를 수 있습니다.`;
   elements.mapMessage.classList.add("hidden");
 }
 
@@ -454,7 +518,7 @@ document.querySelector("#reset-map").addEventListener("click", () => {
 
 function getMapBounds() {
   return complexes
-    .map((complex) => REGION_COORDINATES[regionKey(complex)])
+    .map(coordinatesFor)
     .filter(Boolean);
 }
 
